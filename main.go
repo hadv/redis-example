@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -126,12 +127,67 @@ func newPool() *redis.Pool {
 	}
 }
 
+// User user information
+type User struct {
+	Username  string `json:"username"`
+	MobileID  int    `json:"mobile_id"`
+	Email     string `json:"email"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+}
+
+func setStruct(c redis.Conn, key string, user User) error {
+	// serialize User object to JSON
+	json, err := json.Marshal(user)
+	if err != nil {
+		return err
+	}
+
+	// SET object
+	_, err = c.Do("SET", key, json)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getStruct(c redis.Conn, key string) (*User, error) {
+	s, err := redis.String(c.Do("GET", key))
+	if err == redis.ErrNil {
+		fmt.Println("User does not exist")
+	} else if err != nil {
+		return nil, err
+	}
+	usr := User{}
+	err = json.Unmarshal([]byte(s), &usr)
+
+	return &usr, nil
+}
+
 // This example shows how receive pubsub notifications with cancelation and
 // health checks.
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
+	usr := User{
+		Username:  "otto",
+		MobileID:  1234567890,
+		Email:     "ottoM@repoman.com",
+		FirstName: "Otto",
+		LastName:  "Maddox",
+	}
+	conn := newPool().Get()
+	if err := setStruct(conn, "user_"+usr.Username, usr); err != nil {
+		fmt.Println(err)
+	}
+	user, err := getStruct(conn, "user_otto")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Printf("%+v\n", *user)
 
-	err := listenPubSubChannels(ctx,
+	// PubSub demo
+	ctx, cancel := context.WithCancel(context.Background())
+	err = listenPubSubChannels(ctx,
 		":6379",
 		func() error {
 			// The start callback is a good place to backfill missed
