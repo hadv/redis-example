@@ -19,16 +19,18 @@ func listenPubSubChannels(ctx context.Context, redisServerAddr string,
 	// the connection and server.
 	const healthCheckPeriod = time.Minute
 
-	c, err := redis.Dial("tcp", redisServerAddr,
-		// Read timeout on server should be greater than ping period.
-		redis.DialReadTimeout(healthCheckPeriod+10*time.Second),
-		redis.DialWriteTimeout(10*time.Second))
-	if err != nil {
-		return err
-	}
-	defer c.Close()
+	// c, err := redis.Dial("tcp", redisServerAddr,
+	// 	// Read timeout on server should be greater than ping period.
+	// 	redis.DialReadTimeout(healthCheckPeriod+10*time.Second),
+	// 	redis.DialWriteTimeout(10*time.Second))
+	// if err != nil {
+	// 	return err
+	// }
+	// defer c.Close()
 
-	psc := redis.PubSubConn{Conn: c}
+	conn := newPool().Get()
+	defer conn.Close()
+	psc := redis.PubSubConn{Conn: conn}
 
 	if err := psc.Subscribe(redis.Args{}.AddFlat(channels)...); err != nil {
 		return err
@@ -67,6 +69,7 @@ func listenPubSubChannels(ctx context.Context, redisServerAddr string,
 
 	ticker := time.NewTicker(healthCheckPeriod)
 	defer ticker.Stop()
+	var err error
 loop:
 	for err == nil {
 		select {
@@ -103,6 +106,24 @@ func publish() {
 	c.Do("PUBLISH", "c1", "{message: 'hello'}")
 	c.Do("PUBLISH", "c2", "world")
 	c.Do("PUBLISH", "c1", "goodbye")
+}
+
+func newPool() *redis.Pool {
+	return &redis.Pool{
+		// Maximum number of idle connections in the pool.
+		MaxIdle: 80,
+		// max number of connections
+		MaxActive: 12000,
+		// Dial is an application supplied function for creating and
+		// configuring a connection.
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", ":6379")
+			if err != nil {
+				panic(err.Error())
+			}
+			return c, err
+		},
+	}
 }
 
 // This example shows how receive pubsub notifications with cancelation and
