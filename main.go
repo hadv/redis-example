@@ -136,7 +136,8 @@ type User struct {
 	LastName  string `json:"last_name"`
 }
 
-func setStruct(c redis.Conn, key string, user interface{}) error {
+// SetValue set value to redis cache with specific key
+func SetValue(c redis.Conn, key string, user interface{}) error {
 	// serialize User object to JSON
 	json, err := json.Marshal(user)
 	if err != nil {
@@ -152,17 +153,15 @@ func setStruct(c redis.Conn, key string, user interface{}) error {
 	return nil
 }
 
-func getStruct(c redis.Conn, key string) interface{} {
+// GetValue get value from redis cache by key. Return nil if key not found
+func GetValue(c redis.Conn, key string) string {
 	s, err := redis.String(c.Do("GET", key))
 	if err == redis.ErrNil {
 		fmt.Println("User does not exist")
 	} else if err != nil {
-		return nil
+		return ""
 	}
-	usr := User{}
-	err = json.Unmarshal([]byte(s), &usr)
-
-	return &usr
+	return s
 }
 
 // This example shows how receive pubsub notifications with cancelation and
@@ -176,12 +175,13 @@ func main() {
 		LastName:  "Maddox",
 	}
 	conn := newPool().Get()
-	if err := setStruct(conn, "user_"+usr.Username, usr); err != nil {
+	if err := SetValue(conn, "user_"+usr.Username, usr); err != nil {
 		fmt.Println(err)
 	}
-	var user *User
-	user = getStruct(conn, "user_otto").(*User)
-	fmt.Printf("%+v\n", *user)
+	data := GetValue(conn, "user_otto")
+	var user User
+	json.Unmarshal([]byte(data), &user)
+	fmt.Printf("%+v\n", user)
 
 	// PubSub demo
 	ctx, cancel := context.WithCancel(context.Background())
