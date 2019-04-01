@@ -136,7 +136,7 @@ type User struct {
 	LastName  string `json:"last_name"`
 }
 
-func setStruct(c redis.Conn, key string, user User) error {
+func setStruct(c redis.Conn, key string, user interface{}) error {
 	// serialize User object to JSON
 	json, err := json.Marshal(user)
 	if err != nil {
@@ -152,17 +152,17 @@ func setStruct(c redis.Conn, key string, user User) error {
 	return nil
 }
 
-func getStruct(c redis.Conn, key string) (*User, error) {
+func getStruct(c redis.Conn, key string) interface{} {
 	s, err := redis.String(c.Do("GET", key))
 	if err == redis.ErrNil {
 		fmt.Println("User does not exist")
 	} else if err != nil {
-		return nil, err
+		return nil
 	}
 	usr := User{}
 	err = json.Unmarshal([]byte(s), &usr)
 
-	return &usr, nil
+	return &usr
 }
 
 // This example shows how receive pubsub notifications with cancelation and
@@ -179,15 +179,13 @@ func main() {
 	if err := setStruct(conn, "user_"+usr.Username, usr); err != nil {
 		fmt.Println(err)
 	}
-	user, err := getStruct(conn, "user_otto")
-	if err != nil {
-		fmt.Println(err)
-	}
+	var user *User
+	user = getStruct(conn, "user_otto").(*User)
 	fmt.Printf("%+v\n", *user)
 
 	// PubSub demo
 	ctx, cancel := context.WithCancel(context.Background())
-	err = listenPubSubChannels(ctx,
+	err := listenPubSubChannels(ctx,
 		":6379",
 		func() error {
 			// The start callback is a good place to backfill missed
